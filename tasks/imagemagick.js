@@ -118,6 +118,34 @@ var ResizeCommand={
 };
 
 /**
+* CropCommand
+* resizes the specified images or groups of images using the specified parameters
+* currently uses the same properties as node-imagemagick 
+**/
+var CropCommand={
+  props:undefined,
+  callback:undefined,
+  context:undefined,
+  im:undefined,
+  init:function(pfrom,pto,pprops,pcallback,pcontext){
+    
+    this.props=Object.create(pprops);
+    this.props.srcPath=pfrom;
+    this.props.dstPath=pto;
+    this.callback=pcallback;
+    this.context=pcontext;
+    this.im=require('node-imagemagick');
+
+    grunt.log.write('cropping:'+this.props.srcPath+"...\n");
+    this.im.crop(this.props,proxy(this.complete,this));
+  },
+  complete:function(err){
+    grunt.log.write('cropped '+this.props.dstPath+'--'+err+"\n");
+    this.callback.apply(this.context,[this,true]);
+  }
+};
+
+/**
 * ConvertCommand
 * raw interface to the convert command in imagemagick
 * accepts an array of command line arguments
@@ -218,6 +246,51 @@ module.exports = function(grunt) {
 
     for(i=0;i<fls.length;i++){
       cmd=Object.create(ResizeCommand);
+      cmds.push(cmd);
+      cmd.init(
+        fls[i],
+        this.data.to+fls[i].substr(this.data.from.length), // replace folder
+        this.data.props,
+        onCmdComplete,
+        this
+      );
+    }
+
+    if(fls.length<1){
+      grunt.log.write("Nothing to do\n");
+      done();
+    }else{
+      grunt.log.write("all queued\n");
+    }
+  });
+  
+  /*
+  * imagemagick-crop TASK
+  * takes a from folder, a to folder, a file pattern, and properties, and resizes the matching
+  * files, outputting the resized images to the "to" folder.
+  * {from:"folder",to:"folder",files:"*.ext",props{width:100}} etc.
+  */
+  grunt.registerMultiTask('imagemagick-crop','Resizes images using imagemagick',function(){
+    var done= this.async();
+    grunt.log.write("Beginning ImageMagick resizing process\n");
+    var cmds=[],cmd;
+    var i=0;
+    var fls=grunt.file.expand(this.data.from+this.data.files);
+
+    function onCmdComplete(cmd,success){
+      grunt.log.write("completed:"+cmd.dstPath+"\n");
+      cmds.splice(cmds.indexOf(cmd),1);
+      if(cmds.length<1){
+        done();
+      }
+    }
+
+    if(!fileExists(this.data.to)){
+      grunt.file.mkdir(this.data.to);
+    }
+
+    for(i=0;i<fls.length;i++){
+      cmd=Object.create(CropCommand);
       cmds.push(cmd);
       cmd.init(
         fls[i],
